@@ -2,4 +2,4 @@ publish.sh
 tests
 setup.py
 dist
-src/bellande_format.egg-info
+src/bellande_rust_executable.egg-info
