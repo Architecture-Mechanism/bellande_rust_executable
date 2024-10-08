@@ -1,7 +1,7 @@
 # Bellande Rust Executable
 
 ## Bellande Rust Executable is a library that makes rust code into an executable (BRE) library
-- "-d", "--dep-file", required=True, help="Path to the dependencies file"
+- "-d", "--dep-file", required=True, help="Path to the dependencies file (dependencies.txt) will soon be dependencies.bellande"
 - "-s", "--src-dir", required=True, help="Source directory containing Rust files"
 - "-m", "--main-file", required=True, help="Main Rust file name (e.g., main.rs)"
 - "-o", "--output", required=True, help="Output path for the compiled executable"
