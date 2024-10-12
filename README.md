@@ -1,7 +1,10 @@
 # Bellande Rust Executable
 
 ## Bellande Rust Executable is a library that makes rust code into an executable (BRE) library
-
+- "-d", "--dep-file", required=True, help="Path to the dependencies file (dependencies.txt) will soon be dependencies.bellande"
+- "-s", "--src-dir", required=True, help="Source directory containing Rust files"
+- "-m", "--main-file", required=True, help="Main Rust file name (e.g., main.rs)"
+- "-o", "--output", required=True, help="Output path for the compiled executable"
 
 ## Website PYPI
 - https://pypi.org/project/bellande_rust_executable
@@ -26,4 +29,4 @@ Required-by:
 
 ## License
 
-Bellande Rust Executable Packages is distributed under the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), see [LICENSE](https://github.com/Algorithm-Model-Research/bellande_rust_executable/blob/main/LICENSE) and [NOTICE](https://github.com/Algorithm-Model-Research/bellande_rust_executable/blob/main/LICENSE) for more information.
+Bellande Rust Executable Packages is distributed under the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), see [LICENSE](https://github.com/Architecture-Mechanism/bellande_rust_executable/blob/main/LICENSE) and [NOTICE](https://github.com/Architecture-Mechanism/bellande_rust_executable/blob/main/LICENSE) for more information.
