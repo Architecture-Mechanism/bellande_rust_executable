@@ -20,6 +20,7 @@ import os
 import shutil
 import argparse
 import toml
+from bellande_format import Bellande_Format
 
 def ensure_directory(path):
     """Ensure a directory exists and create one if it does not"""
@@ -52,7 +53,6 @@ def create_cargo_toml(project_dir, main_file, binary_name):
         'dependencies': {}
     }
     
-    # If the main file isn't main.rs, we need to specify the path
     if main_file != 'main.rs':
         cargo_config['bin'] = [{
             'name': binary_name,
@@ -64,19 +64,22 @@ def create_cargo_toml(project_dir, main_file, binary_name):
         toml.dump(cargo_config, f)
 
 def parse_dependencies(dep_file):
-    """Parse dependencies from the specified dependencies file."""
-    dependencies = {}
-    if os.path.exists(dep_file):
-        with open(dep_file, 'r') as file:
-            for line in file:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    try:
-                        name, version = line.split('=')
-                        dependencies[name.strip()] = version.strip().strip('"')
-                    except ValueError:
-                        print(f"Warning: Skipping invalid dependency line: {line}")
-    return dependencies
+    """Parse dependencies from the specified .bellande file using Bellande_Format."""
+    bellande_parser = Bellande_Format()
+    parsed_data = bellande_parser.parse_bellande(dep_file)
+    
+    # Convert the string representation to a Python dictionary
+    dependencies = eval(parsed_data)
+    
+    # Process the dependencies to match Cargo.toml format
+    processed_dependencies = {}
+    for name, value in dependencies.items():
+        if isinstance(value, str):
+            processed_dependencies[name] = value
+        elif isinstance(value, dict):
+            processed_dependencies[name] = value
+    
+    return processed_dependencies
 
 def update_cargo_toml_dependencies(project_dir, dependencies):
     """Update the dependencies in Cargo.toml."""
@@ -95,18 +98,11 @@ def build_project(project_dir, output_path, binary_name):
     result = subprocess.run(cargo_command, cwd=project_dir, capture_output=True, text=True)
     
     if result.returncode == 0:
-        # Determine the correct executable name based on platform
-        if os.name == 'nt':  # Windows
-            exe_extension = '.exe'
-        else:  # Unix-like systems
-            exe_extension = ''
-        
-        # Copy the built executable to the specified output location
+        exe_extension = '.exe' if os.name == 'nt' else ''
         built_exe = os.path.join(project_dir, 'target', 'release', f"{binary_name}{exe_extension}")
         ensure_directory(os.path.dirname(output_path))
         shutil.copy2(built_exe, output_path)
         
-        # Make the output file executable on Unix-like systems
         if os.name != 'nt':
             os.chmod(output_path, 0o755)
         
@@ -119,17 +115,14 @@ def build_project(project_dir, output_path, binary_name):
 
 def main():
     parser = argparse.ArgumentParser(description="Universal Rust Executable Builder")
-    parser.add_argument("-d", "--dep-file", required=True, help="Path to the dependencies file")
+    parser.add_argument("-d", "--dep-file", required=True, help="Path to the .bellande dependencies file")
     parser.add_argument("-s", "--src-dir", required=True, help="Source directory containing Rust files")
     parser.add_argument("-m", "--main-file", required=True, help="Main Rust file name (e.g., main.rs)")
     parser.add_argument("-o", "--output", required=True, help="Output path for the compiled executable")
     
     args = parser.parse_args()
     
-    # Extract binary name from the file name (removing .rs extension)
     binary_name = os.path.splitext(args.main_file)[0]
-    
-    # Create unique build directory based on binary name
     build_dir = f"build_{binary_name}"
     ensure_directory(build_dir)
     
@@ -137,17 +130,11 @@ def main():
         copy_source_files(args.src_dir, build_dir)
         create_cargo_toml(build_dir, args.main_file, binary_name)
         
-        # Parse and update dependencies
         dependencies = parse_dependencies(args.dep_file)
         update_cargo_toml_dependencies(build_dir, dependencies)
         
-        # Determine the correct output path based on platform
-        if os.name == 'nt':  # Windows
-            output_path = f"{args.output}.exe"
-        else:  # Unix-like systems
-            output_path = args.output
+        output_path = f"{args.output}.exe" if os.name == 'nt' else args.output
         
-        # Build the project
         if build_project(build_dir, output_path, binary_name):
             print(f"Successfully built and copied to {output_path}")
             return 0
@@ -156,7 +143,6 @@ def main():
             return 1
     
     finally:
-        # Clean up build directory
         shutil.rmtree(build_dir, ignore_errors=True)
 
 if __name__ == "__main__":
