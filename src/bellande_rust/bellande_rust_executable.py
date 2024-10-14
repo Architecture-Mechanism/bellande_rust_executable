@@ -34,7 +34,7 @@ def copy_source_files(src_dir, dest_dir):
     dest_src_dir = os.path.join(dest_dir, 'src')
     ensure_directory(dest_src_dir)
     
-    for root, dirs, files in os.walk(src_dir):
+    for root, _, files in os.walk(src_dir):
         for file in files:
             src_path = os.path.join(root, file)
             rel_path = os.path.relpath(src_path, src_dir)
