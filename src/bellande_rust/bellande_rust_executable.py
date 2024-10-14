@@ -20,7 +20,7 @@ import os
 import shutil
 import argparse
 import toml
-from bellande_format import Bellande_Format
+from bellande_parser.bellande_parser import Bellande_Format
 
 def ensure_directory(path):
     """Ensure a directory exists and create one if it does not"""
