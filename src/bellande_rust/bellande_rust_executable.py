@@ -116,7 +116,7 @@ def build_project(project_dir, output_path, binary_name):
 def main():
     parser = argparse.ArgumentParser(description="Universal Rust Executable Builder")
     parser.add_argument("-d", "--dep-file", required=True, help="Path to the .bellande dependencies file")
-    parser.add_argument("-sp", default="src", help="Source path within the project (default: src)")
+    parser.add_argument("-sp", "--src-path", default="src", help="Source path within the project (default: src)")
     parser.add_argument("-s", "--src-dir", required=True, help="Source directory containing Rust files")
     parser.add_argument("-m", "--main-file", required=True, help="Main Rust file name (e.g., main.rs)")
     parser.add_argument("-o", "--output", required=True, help="Output path for the compiled executable")
