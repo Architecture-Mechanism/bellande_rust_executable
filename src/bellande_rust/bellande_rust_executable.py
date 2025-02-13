@@ -26,12 +26,12 @@ def ensure_directory(path):
     """Ensure a directory exists and create one if it does not"""
     os.makedirs(path, exist_ok=True)
 
-def copy_source_files(src_dir, dest_dir):
+def copy_source_files(src_dir, dest_dir, project_src_path="src"):
     """Maintained the structure of the src file; or assigned"""
     if not os.path.exists(src_dir):
         raise FileNotFoundError(f"Source directory '{src_dir}' not found")
     
-    dest_src_dir = os.path.join(dest_dir, 'src')
+    dest_src_dir = os.path.join(dest_dir, project_src_path)
     ensure_directory(dest_src_dir)
     
     for root, _, files in os.walk(src_dir):
@@ -42,7 +42,7 @@ def copy_source_files(src_dir, dest_dir):
             ensure_directory(os.path.dirname(dest_path))
             shutil.copy2(src_path, dest_path)
 
-def create_cargo_toml(project_dir, main_file, binary_name):
+def create_cargo_toml(project_dir, main_file, binary_name, project_src_path="src"):
     """Create a Cargo.toml file for a binary target."""
     cargo_config = {
         'package': {
@@ -56,7 +56,7 @@ def create_cargo_toml(project_dir, main_file, binary_name):
     if main_file != 'main.rs':
         cargo_config['bin'] = [{
             'name': binary_name,
-            'path': os.path.join("src", main_file)
+            'path': os.path.join(project_src_path, main_file)
         }]
     
     cargo_toml_path = os.path.join(project_dir, 'Cargo.toml')
@@ -64,7 +64,7 @@ def create_cargo_toml(project_dir, main_file, binary_name):
         toml.dump(cargo_config, f)
 
 def parse_dependencies(dep_file):
-    """Parse dependencies from the specified .bellande file using Bellande_Format."""
+    """Parse dependencies from the specified .bellande file using Bellande Format."""
     bellande_parser = Bellande_Format()
     parsed_data = bellande_parser.parse_bellande(dep_file)
     
@@ -116,6 +116,7 @@ def build_project(project_dir, output_path, binary_name):
 def main():
     parser = argparse.ArgumentParser(description="Universal Rust Executable Builder")
     parser.add_argument("-d", "--dep-file", required=True, help="Path to the .bellande dependencies file")
+    parser.add_argument("-sp", default="src", help="Source path within the project (default: src)")
     parser.add_argument("-s", "--src-dir", required=True, help="Source directory containing Rust files")
     parser.add_argument("-m", "--main-file", required=True, help="Main Rust file name (e.g., main.rs)")
     parser.add_argument("-o", "--output", required=True, help="Output path for the compiled executable")
@@ -127,8 +128,8 @@ def main():
     ensure_directory(build_dir)
     
     try:
-        copy_source_files(args.src_dir, build_dir)
-        create_cargo_toml(build_dir, args.main_file, binary_name)
+        copy_source_files(args.src_dir, build_dir, args.src_path)
+        create_cargo_toml(build_dir, args.main_file, binary_name, args.src_path)        
         
         dependencies = parse_dependencies(args.dep_file)
         update_cargo_toml_dependencies(build_dir, dependencies)
