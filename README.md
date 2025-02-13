@@ -18,7 +18,8 @@
 ```
 Name: bellande_rust_executable
 Summary: File type Formats
-Home-page: github.com/RonaldsonBellande/bellande_rust_executable
+Company-page: git@git.bellande-technologies.com/BAMRI/bellande_rust_executable
+Home-page: github.com/Architecture-Mechanism/bellande_rust_executable
 Author: Ronaldson Bellande
 Author-email: ronaldsonbellande@gmail.com
 License: GNU General Public License v3.0
