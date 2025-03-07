@@ -66,20 +66,61 @@ def create_cargo_toml(project_dir, main_file, binary_name, project_src_path="src
 def parse_dependencies(dep_file):
     """Parse dependencies from the specified .bellande file using Bellande Format."""
     bellande_parser = Bellande_Format()
+    # Get the raw content as a string
     parsed_data = bellande_parser.parse_bellande(dep_file)
     
-    # Convert the string representation to a Python dictionary
-    dependencies = eval(parsed_data)
+    dependencies = {}
+    current_package = None
     
-    # Process the dependencies to match Cargo.toml format
-    processed_dependencies = {}
-    for name, value in dependencies.items():
-        if isinstance(value, str):
-            processed_dependencies[name] = value
-        elif isinstance(value, dict):
-            processed_dependencies[name] = value
+    # Process line by line
+    for line in parsed_data.strip().split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Check if this line defines a package with version
+        if ': "' in line and not line.startswith(' '):
+            # Parse the package name and version
+            parts = line.split(': "', 1)
+            package_name = parts[0].strip()
+            version = parts[1].rstrip('"')
+            
+            # Reset package processing state
+            current_package = package_name
+            
+            # Add as simple version dependency if no features follow
+            dependencies[current_package] = version
+        
+        # Handle features
+        elif line.startswith('features = ') and current_package:
+            features_str = line.replace('features = ', '').strip()
+            features = [f.strip() for f in features_str.split(',')]
+            
+            # Convert the simple version to a complex config
+            if isinstance(dependencies[current_package], str):
+                version = dependencies[current_package]
+                dependencies[current_package] = {
+                    "version": version,
+                    "features": features
+                }
+            else:
+                dependencies[current_package]["features"] = features
+        
+        # Handle optional flag
+        elif line.startswith('optional = ') and current_package:
+            optional_value = line.replace('optional = ', '').strip().lower() == 'true'
+            
+            # Convert the simple version to a complex config if needed
+            if isinstance(dependencies[current_package], str):
+                version = dependencies[current_package]
+                dependencies[current_package] = {
+                    "version": version,
+                    "optional": optional_value
+                }
+            else:
+                dependencies[current_package]["optional"] = optional_value
     
-    return processed_dependencies
+    return dependencies
 
 def update_cargo_toml_dependencies(project_dir, dependencies):
     """Update the dependencies in Cargo.toml."""
@@ -87,7 +128,24 @@ def update_cargo_toml_dependencies(project_dir, dependencies):
     with open(cargo_toml_path, 'r') as f:
         cargo_config = toml.load(f)
     
-    cargo_config['dependencies'] = dependencies
+    # Process dependencies for proper Cargo.toml formatting
+    processed_deps = {}
+    for name, config in dependencies.items():
+        if isinstance(config, str):
+            # Simple version dependency
+            processed_deps[name] = config
+        else:
+            # Complex dependency with features or optional flag
+            cargo_dep = {}
+            if "version" in config:
+                cargo_dep["version"] = config["version"]
+            if "features" in config and config["features"]:
+                cargo_dep["features"] = config["features"]
+            if "optional" in config:
+                cargo_dep["optional"] = config["optional"]
+            processed_deps[name] = cargo_dep
+    
+    cargo_config['dependencies'] = processed_deps
     
     with open(cargo_toml_path, 'w') as f:
         toml.dump(cargo_config, f)
