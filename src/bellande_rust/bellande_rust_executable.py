@@ -20,6 +20,7 @@ import os
 import shutil
 import argparse
 import toml
+import json
 from bellande_parser.bellande_parser import Bellande_Format
 
 def ensure_directory(path):
@@ -66,96 +67,103 @@ def create_cargo_toml(project_dir, main_file, binary_name, project_src_path="src
 def parse_dependencies(dep_file):
     """Parse dependencies from the specified .bellande file using Bellande Format."""
     bellande_parser = Bellande_Format()
-    # Get the raw content as a string
-    parsed_data = bellande_parser.parse_bellande(dep_file)
+    raw_content = bellande_parser.parse_bellande(dep_file)
     
-    dependencies = {}
-    current_package = None
+    print(f"Raw content from bellande file: {raw_content[:200]}...")
     
-    # Process line by line
-    for line in parsed_data.strip().split('\n'):
+    lines = raw_content.strip().splitlines()
+    processed_dependencies = {}
+    
+    current_dep = None
+    
+    for line in lines:
         line = line.strip()
-        if not line:
+        print(f"Processing line: {line}")
+        
+        if not line or line.startswith("#"):
             continue
         
-        # Check if this line defines a package with version
-        if ': "' in line and not line.startswith(' '):
-            # Parse the package name and version
-            parts = line.split(': "', 1)
-            package_name = parts[0].strip()
-            version = parts[1].rstrip('"')
+        if ":" in line and not line.startswith(" "):
+            parts = line.split(":", 1)
+            dep_name = parts[0].strip()
+            dep_value = parts[1].strip().strip('"')
             
-            # Reset package processing state
-            current_package = package_name
+            print(f"Found dependency: {dep_name} = {dep_value}")
             
-            # Add as simple version dependency if no features follow
-            dependencies[current_package] = version
-        
-        # Handle features
-        elif line.startswith('features = ') and current_package:
-            features_str = line.replace('features = ', '').strip()
-            features = [f.strip() for f in features_str.split(',')]
+            processed_dependencies[dep_name] = dep_value
+            current_dep = dep_name
             
-            # Convert the simple version to a complex config
-            if isinstance(dependencies[current_package], str):
-                version = dependencies[current_package]
-                dependencies[current_package] = {
-                    "version": version,
-                    "features": features
-                }
+        elif "=" in line and line.startswith(" ") and current_dep:
+            parts = line.strip().split("=", 1)
+            attr_name = parts[0].strip()
+            attr_value = parts[1].strip()
+            
+            print(f"  Found attribute for {current_dep}: {attr_name} = {attr_value}")
+            
+            if not isinstance(processed_dependencies[current_dep], dict):
+                version = processed_dependencies[current_dep]
+                processed_dependencies[current_dep] = {"version": version}
+            
+            # Handle different attribute types
+            if attr_name == "features":
+                if attr_value.startswith("[") and attr_value.endswith("]"):
+                    features_list = [f.strip() for f in attr_value[1:-1].split(",")]
+                    processed_dependencies[current_dep]["features"] = features_list
+                else:
+                    processed_dependencies[current_dep]["features"] = [attr_value.strip()]
+            elif attr_name == "optional":
+                processed_dependencies[current_dep]["optional"] = attr_value.lower() == "true"
             else:
-                dependencies[current_package]["features"] = features
-        
-        # Handle optional flag
-        elif line.startswith('optional = ') and current_package:
-            optional_value = line.replace('optional = ', '').strip().lower() == 'true'
-            
-            # Convert the simple version to a complex config if needed
-            if isinstance(dependencies[current_package], str):
-                version = dependencies[current_package]
-                dependencies[current_package] = {
-                    "version": version,
-                    "optional": optional_value
-                }
-            else:
-                dependencies[current_package]["optional"] = optional_value
+                processed_dependencies[current_dep][attr_name] = attr_value
     
-    return dependencies
+    print(f"Processed dependencies: {json.dumps(processed_dependencies, indent=2)}")
+    
+    return processed_dependencies
 
 def update_cargo_toml_dependencies(project_dir, dependencies):
     """Update the dependencies in Cargo.toml."""
+    
     cargo_toml_path = os.path.join(project_dir, 'Cargo.toml')
+    
+    # Load the existing Cargo.toml file
     with open(cargo_toml_path, 'r') as f:
         cargo_config = toml.load(f)
     
-    # Process dependencies for proper Cargo.toml formatting
-    processed_deps = {}
-    for name, config in dependencies.items():
-        if isinstance(config, str):
-            # Simple version dependency
-            processed_deps[name] = config
-        else:
-            # Complex dependency with features or optional flag
-            cargo_dep = {}
-            if "version" in config:
-                cargo_dep["version"] = config["version"]
-            if "features" in config and config["features"]:
-                cargo_dep["features"] = config["features"]
-            if "optional" in config:
-                cargo_dep["optional"] = config["optional"]
-            processed_deps[name] = cargo_dep
+    # Debug: Print current Cargo.toml configuration
+    print(f"Current Cargo.toml config: {json.dumps(cargo_config, indent=2)}")
     
-    cargo_config['dependencies'] = processed_deps
+    # Update the dependencies section
+    cargo_config['dependencies'] = dependencies
     
+    # Debug: Print updated configuration
+    print(f"Updated Cargo.toml config: {json.dumps(cargo_config, indent=2)}")
+    
+    # Write the updated config back to Cargo.toml
     with open(cargo_toml_path, 'w') as f:
         toml.dump(cargo_config, f)
+    
+    # Debug: Read back the written file to verify
+    with open(cargo_toml_path, 'r') as f:
+        content = f.read()
+        print(f"Written Cargo.toml content: {content[:200]}...")
 
 def build_project(project_dir, output_path, binary_name):
     """Build the Rust project as an executable."""
     cargo_command = ['cargo', 'build', '--release']
+    
+    try:
+        version_check = subprocess.run(['cargo', '--version'], 
+                                      capture_output=True, text=True, check=True)
+        print(f"Using Cargo: {version_check.stdout.strip()}")
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"Error checking Cargo version: {e}")
+        return False
+    
+    print(f"Running build command: {' '.join(cargo_command)} in {project_dir}")
     result = subprocess.run(cargo_command, cwd=project_dir, capture_output=True, text=True)
     
     if result.returncode == 0:
+        print("Build succeeded!")
         exe_extension = '.exe' if os.name == 'nt' else ''
         built_exe = os.path.join(project_dir, 'target', 'release', f"{binary_name}{exe_extension}")
         ensure_directory(os.path.dirname(output_path))
@@ -164,6 +172,7 @@ def build_project(project_dir, output_path, binary_name):
         if os.name != 'nt':
             os.chmod(output_path, 0o755)
         
+        print(f"Executable copied to {output_path}")
         return True
     else:
         print("Build failed. Cargo output:")
@@ -178,6 +187,7 @@ def main():
     parser.add_argument("-s", "--src-dir", required=True, help="Source directory containing Rust files")
     parser.add_argument("-m", "--main-file", required=True, help="Main Rust file name (e.g., main.rs)")
     parser.add_argument("-o", "--output", required=True, help="Output path for the compiled executable")
+    parser.add_argument("--debug", action="store_true", help="Enable additional debug output")
     
     args = parser.parse_args()
     
@@ -185,13 +195,24 @@ def main():
     build_dir = f"build_{binary_name}"
     ensure_directory(build_dir)
     
+    print(f"Creating build in directory: {build_dir}")
+    print(f"Source directory: {args.src_dir}")
+    print(f"Dependencies file: {args.dep_file}")
+    
     try:
+        print("Copying source files...")
         copy_source_files(args.src_dir, build_dir, args.src_path)
+        
+        print("Creating initial Cargo.toml...")
         create_cargo_toml(build_dir, args.main_file, binary_name, args.src_path)        
         
+        print("Parsing dependencies...")
         dependencies = parse_dependencies(args.dep_file)
+        
+        print("Updating Cargo.toml with dependencies...")
         update_cargo_toml_dependencies(build_dir, dependencies)
         
+        print("Building project...")
         output_path = f"{args.output}.exe" if os.name == 'nt' else args.output
         
         if build_project(build_dir, output_path, binary_name):
@@ -201,8 +222,18 @@ def main():
             print("Build failed")
             return 1
     
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
     finally:
-        shutil.rmtree(build_dir, ignore_errors=True)
+        if not args.debug:
+            print(f"Cleaning up build directory: {build_dir}")
+            shutil.rmtree(build_dir, ignore_errors=True)
+        else:
+            print(f"Debug mode: Keeping build directory: {build_dir}")
 
 if __name__ == "__main__":
     exit(main())
