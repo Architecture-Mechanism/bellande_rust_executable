@@ -71,54 +71,101 @@ def parse_dependencies(dep_file):
     
     print(f"Raw content from bellande file: {raw_content[:200]}...")
     
-    lines = raw_content.strip().splitlines()
-    processed_dependencies = {}
+    # Initialize formatted dependencies dictionary
+    formatted_dependencies = {}
     
-    current_dep = None
-    
-    for line in lines:
-        line = line.strip()
-        print(f"Processing line: {line}")
+    # Handle raw text format with indentation
+    if isinstance(raw_content, str):
+        lines = raw_content.strip().split('\n')
+        current_package = None
+        current_package_data = {}
         
-        if not line or line.startswith("#"):
-            continue
-        
-        if ":" in line and not line.startswith(" "):
-            parts = line.split(":", 1)
-            dep_name = parts[0].strip()
-            dep_value = parts[1].strip().strip('"')
+        for line in lines:
+            stripped_line = line.strip()
+            if not stripped_line:
+                continue
+                
+            # Check indentation level
+            indentation = len(line) - len(line.lstrip())
             
-            print(f"Found dependency: {dep_name} = {dep_value}")
-            
-            processed_dependencies[dep_name] = dep_value
-            current_dep = dep_name
-            
-        elif "=" in line and line.startswith(" ") and current_dep:
-            parts = line.strip().split("=", 1)
-            attr_name = parts[0].strip()
-            attr_value = parts[1].strip()
-            
-            print(f"  Found attribute for {current_dep}: {attr_name} = {attr_value}")
-            
-            if not isinstance(processed_dependencies[current_dep], dict):
-                version = processed_dependencies[current_dep]
-                processed_dependencies[current_dep] = {"version": version}
-            
-            # Handle different attribute types
-            if attr_name == "features":
-                if attr_value.startswith("[") and attr_value.endswith("]"):
-                    features_list = [f.strip() for f in attr_value[1:-1].split(",")]
-                    processed_dependencies[current_dep]["features"] = features_list
-                else:
-                    processed_dependencies[current_dep]["features"] = [attr_value.strip()]
-            elif attr_name == "optional":
-                processed_dependencies[current_dep]["optional"] = attr_value.lower() == "true"
+            # If line is indented, it's an attribute of the current package
+            if indentation > 0 and current_package:
+                # This is an attribute of the current package
+                if ":" in stripped_line:
+                    key, value = [part.strip() for part in stripped_line.split(':', 1)]
+                    
+                    if key == "features":
+                        # Handle features as a list
+                        if isinstance(current_package_data, str):
+                            current_package_data = {"version": current_package_data}
+                            
+                        # Convert single feature to a list
+                        features = [value.strip().strip('",')]
+                        current_package_data["features"] = features
+                    elif key == "optional":
+                        # Handle optional as a boolean
+                        if isinstance(current_package_data, str):
+                            current_package_data = {"version": current_package_data}
+                            
+                        optional_value = value.lower().strip().strip('",') == "true"
+                        current_package_data["optional"] = optional_value
+                    else:
+                        # Handle other attributes
+                        if isinstance(current_package_data, str):
+                            current_package_data = {"version": current_package_data}
+                        current_package_data[key] = value.strip().strip('",')
             else:
-                processed_dependencies[current_dep][attr_name] = attr_value
+                # This is a new package
+                if current_package:
+                    # Save the previous package
+                    formatted_dependencies[current_package] = current_package_data
+                
+                if ":" in stripped_line:
+                    package_name, version = [part.strip() for part in stripped_line.split(':', 1)]
+                    current_package = package_name.strip().strip('"')
+                    current_package_data = version.strip().strip('",')
+                else:
+                    # Malformed line, skip
+                    current_package = None
+                    current_package_data = {}
+        
+        # Add the last package
+        if current_package:
+            formatted_dependencies[current_package] = current_package_data
+    elif isinstance(raw_content, dict):
+        # The content is already in dictionary format
+        for package, info in raw_content.items():
+            if isinstance(info, dict):
+                formatted_dependencies[package] = info
+            else:
+                formatted_dependencies[package] = str(info).strip().strip('",')
     
-    print(f"Processed dependencies: {json.dumps(processed_dependencies, indent=2)}")
+    return formatted_dependencies
+
+def format_cargo_toml(dependencies):
+    """Format dependencies as they would appear in Cargo.toml"""
+    lines = []
+    for name, info in dependencies.items():
+        if isinstance(info, str):
+            lines.append(f'{name} = "{info}"')
+        elif isinstance(info, dict):
+            if len(info) == 1 and "version" in info:
+                lines.append(f'{name} = "{info["version"]}"')
+            else:
+                parts = []
+                if "version" in info:
+                    parts.append(f'version = "{info["version"]}"')
+                
+                if "features" in info and info["features"]:
+                    features_str = ", ".join([f'"{f}"' for f in info["features"]])
+                    parts.append(f'features = [{features_str}]')
+                
+                if "optional" in info:
+                    parts.append(f'optional = {str(info["optional"]).lower()}')
+                
+                lines.append(f'{name} = {{ {", ".join(parts)} }}')
     
-    return processed_dependencies
+    return "\n".join(lines)
 
 def update_cargo_toml_dependencies(project_dir, dependencies):
     """Update the dependencies in Cargo.toml."""
@@ -129,7 +176,6 @@ def update_cargo_toml_dependencies(project_dir, dependencies):
     with open(cargo_toml_path, 'r') as f:
         cargo_config = toml.load(f)
     
-    # Debug: Print current Cargo.toml configuration
     print(f"Current Cargo.toml config: {json.dumps(cargo_config, indent=2)}")
     
     # Update the dependencies section
@@ -141,6 +187,9 @@ def update_cargo_toml_dependencies(project_dir, dependencies):
     # Write the updated config back to Cargo.toml
     with open(cargo_toml_path, 'w') as f:
         toml.dump(cargo_config, f)
+    
+    readable_deps = format_cargo_toml(dependencies)
+    print(f"Dependencies in Cargo.toml format:\n{readable_deps}")
     
     # Debug: Read back the written file to verify
     with open(cargo_toml_path, 'r') as f:
